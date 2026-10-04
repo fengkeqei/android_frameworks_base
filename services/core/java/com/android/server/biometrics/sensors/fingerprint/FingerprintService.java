@@ -1142,7 +1142,22 @@ public class FingerprintService extends SystemService {
             // Now, the virtual hal is registered with IVirtualHal interface and it is also
             //   moved from vendor to system_ext partition without a device manifest. So
             //   if the old vhal is not declared, add here.
-            a = ArrayUtils.appendElement(String.class, a, "virtual");
+            //
+            // However, on devices without any virtual HAL (e.g. a plain HIDL fingerprint
+            //   HAL configured via config_biometric_sensors), unconditionally adding
+            //   "virtual" leaves FingerprintSensorConfigurations with a phantom entry.
+            //   If it is the only entry, filterAvailableHalInstances() resolves it via
+            //   getSensorPropForInstance("virtual") -> ServiceManager.waitForService(
+            //   "...virtualhal.IVirtualHal/virtual"), which blocks forever and the HIDL
+            //   sensor is never registered. Only add the synthetic instance when the
+            //   VHAL instance is actually declared (leftover from LineageOS bring-up).
+            final String[] vhal = ServiceManager.getDeclaredInstances(
+                    "android.hardware.biometrics.fingerprint.virtualhal.IVirtualHal");
+            if (ArrayUtils.contains(vhal, "virtual")) {
+                a = ArrayUtils.appendElement(String.class, a, "virtual");
+            } else {
+                Slog.i(TAG, "virtual hal not declared; not adding synthetic instance");
+            }
         }
         Slog.i(TAG, "After:getDeclaredInstances: a.length=" + a.length);
         return a;

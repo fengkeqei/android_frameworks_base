@@ -357,7 +357,7 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
                     null /* callback */);
         }
 
-        if (Build.isDebuggable()) {
+        if (Build.isDebuggable() && mFingerprintSensors.size() > 0) {
             final int sensorId = mFingerprintSensors.keyAt(0);
             final BiometricUtils<Fingerprint> utils = mFingerprintSensors.get(sensorId)
                     .getFingerprintUtilsInstance();
@@ -683,16 +683,26 @@ public class FingerprintProvider implements IBinder.DeathRecipient, ServiceProvi
             return;
         }
         mHandler.post(() -> {
+            final Sensor sensor = mFingerprintSensors.get(sensorId);
+            if (sensor == null) {
+                // A cleanup can be scheduled (e.g. by a user-switch observer or the
+                //   HIDL adapter's internal-cleanup runnable) before the sensor has
+                //   finished being registered in mFingerprintSensors. Dereferencing
+                //   the null sensor here would crash system_server (Round 67:
+                //   FingerprintProvider.java:688, getLazySession() on null).
+                Slog.w(getTag(), "scheduleInternalCleanup: unknown sensorId " + sensorId);
+                return;
+            }
             final FingerprintInternalCleanupClient client =
                     new FingerprintInternalCleanupClient(mContext,
-                            mFingerprintSensors.get(sensorId).getLazySession(), userId,
+                            sensor.getLazySession(), userId,
                             mContext.getOpPackageName(), sensorId,
                             createLogger(BiometricsProtoEnums.ACTION_ENUMERATE,
                                     BiometricsProtoEnums.CLIENT_UNKNOWN,
                                     mAuthenticationStatsCollector),
                             mBiometricContext,
-                            mFingerprintSensors.get(sensorId).getFingerprintUtilsInstance(),
-                            mFingerprintSensors.get(sensorId).getAuthenticatorIds());
+                            sensor.getFingerprintUtilsInstance(),
+                            sensor.getAuthenticatorIds());
             if (favorHalEnrollments) {
                 client.setFavorHalEnrollments();
             }
